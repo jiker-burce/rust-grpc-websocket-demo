@@ -2,7 +2,7 @@ use crate::database::{DbPool, MessageRepository, UserRepository};
 use crate::grpc::auth::AuthService;
 use crate::redis::SessionManager;
 use crate::websocket::{
-    BroadcastHandler, CommandProcessor, ConnectionState, StrategyFactory, WebSocketMessage,
+    BroadcastHandler, CommandProcessor, ConnectionState, EventHandlerFactory, WebSocketMessage,
 };
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 
 /// 重构后的WebSocket处理器，使用策略模式+命令模式
 pub struct WebSocketHandlerV2 {
-    strategy_factory: Arc<StrategyFactory>,
+    event_handler_factory: Arc<EventHandlerFactory>,
     broadcast_handler: Arc<tokio::sync::Mutex<BroadcastHandler>>,
     command_processor: Arc<CommandProcessor>,
     auth_service: AuthService,
@@ -25,15 +25,19 @@ impl WebSocketHandlerV2 {
             std::env::var("JWT_SECRET").unwrap_or_else(|_| "your-secret-key".to_string()),
         );
 
-        let strategy_factory = Arc::new(StrategyFactory::new(user_repo.clone(), message_repo));
+        let event_handler_factory = Arc::new(EventHandlerFactory::new(
+            user_repo.clone(),
+            message_repo,
+            session_manager.clone(),
+        ));
         let broadcast_handler = Arc::new(tokio::sync::Mutex::new(BroadcastHandler::new()));
         let command_processor = Arc::new(CommandProcessor::new(
-            strategy_factory.clone(),
+            event_handler_factory.clone(),
             broadcast_handler.clone(),
         ));
 
         Self {
-            strategy_factory,
+            event_handler_factory,
             broadcast_handler,
             command_processor,
             auth_service,
