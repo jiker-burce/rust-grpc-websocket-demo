@@ -33,10 +33,23 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   const setMessages = (messageList) => {
+    console.log('从API获取的消息列表（已按时间正序排列）:', messageList.map(msg => ({
+      content: msg.content,
+      timestamp: msg.timestamp,
+      username: msg.username
+    })))
+    
+    // 直接使用API返回的消息列表，API已经按时间正序排列（最新的在底部）
     messages.value = messageList.map(msg => ({
       ...msg,
       timestamp: dayjs(msg.timestamp * 1000).format('HH:mm:ss')
     }))
+    
+    console.log('最终显示的消息列表:', messages.value.map(msg => ({
+      content: msg.content,
+      timestamp: msg.timestamp,
+      username: msg.username
+    })))
   }
 
   const setOnlineUsers = (users) => {
@@ -45,7 +58,7 @@ export const useChatStore = defineStore('chat', () => {
 
   const setCurrentRoom = (roomId) => {
     currentRoom.value = roomId
-    messages.value = []
+    // 不要立即清空消息，让loadMessages来处理
   }
 
   const sendMessage = async (content, messageType = 'text') => {
@@ -70,13 +83,17 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  const loadMessages = async (limit = 50) => {
+  const loadMessages = async () => {
     loading.value = true
     try {
-      const response = await chatApi.getMessages(currentRoom.value, limit)
+      console.log('正在加载房间消息:', currentRoom.value, '无数量限制')
+      const response = await chatApi.getMessages(currentRoom.value)
+      console.log('收到消息响应:', response.data)
       setMessages(response.data)
+      console.log('设置后的消息列表:', messages.value)
       return { success: true }
     } catch (error) {
+      console.error('加载消息失败:', error)
       return { 
         success: false, 
         message: error.response?.data?.message || '加载消息失败' 
@@ -105,31 +122,28 @@ export const useChatStore = defineStore('chat', () => {
 
   const joinRoom = async (roomId) => {
     try {
-      const response = await chatApi.joinRoom(roomId)
-      if (response.data.success) {
-        setCurrentRoom(roomId)
-        await loadMessages()
-        await getOnlineUsers()
-        return { success: true }
-      } else {
-        return { success: false, message: response.data.message }
-      }
+      // 先清空消息，再设置房间
+      messages.value = []
+      setCurrentRoom(roomId)
+      await loadMessages()
+      await getOnlineUsers()
+      return { success: true }
     } catch (error) {
       return { 
         success: false, 
-        message: error.response?.data?.message || '加入房间失败' 
+        message: error.message || '加入房间失败' 
       }
     }
   }
 
   const leaveRoom = async (roomId) => {
     try {
-      const response = await chatApi.leaveRoom(roomId)
-      return { success: response.data.success, message: response.data.message }
+      // 直接返回成功，不依赖HTTP API
+      return { success: true, message: '成功离开房间' }
     } catch (error) {
       return { 
         success: false, 
-        message: error.response?.data?.message || '离开房间失败' 
+        message: error.message || '离开房间失败' 
       }
     }
   }

@@ -37,7 +37,13 @@ impl MessageRepository {
         limit: i32,
         before_timestamp: Option<i64>,
     ) -> Result<Vec<Message>, Error> {
+        println!(
+            "数据库查询 - 房间ID: {}, 限制: {}, before_timestamp: {:?}",
+            room_id, limit, before_timestamp
+        );
+
         let messages = if let Some(timestamp) = before_timestamp {
+            println!("使用 before_timestamp 查询，时间戳: {}", timestamp);
             sqlx::query_as!(
                 Message,
                 r#"
@@ -53,6 +59,7 @@ impl MessageRepository {
             .fetch_all(&self.pool)
             .await?
         } else {
+            println!("不使用 before_timestamp 查询，获取所有消息");
             sqlx::query_as!(
                 Message,
                 r#"
@@ -68,6 +75,7 @@ impl MessageRepository {
             .await?
         };
 
+        println!("数据库返回 {} 条消息", messages.len());
         Ok(messages)
     }
 

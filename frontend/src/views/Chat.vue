@@ -43,12 +43,12 @@
         </div>
         
         <div class="online-section">
-          <h4>在线用户 ({{ chatStore.onlineUsers.length }})</h4>
+          <h4>在线用户 ({{ allOnlineUsers.length }})</h4>
           <div class="online-users">
             <div
-              v-for="user in chatStore.onlineUsers"
+              v-for="user in allOnlineUsers"
               :key="user.id"
-              class="online-user"
+              :class="['online-user', { 'current-user': user.id === userStore.user?.id }]"
             >
               <el-avatar :src="user.avatar" :size="24">
                 {{ user.username?.charAt(0).toUpperCase() }}
@@ -57,11 +57,11 @@
               <div class="online-indicator"></div>
             </div>
             <!-- 调试信息 -->
-            <div v-if="chatStore.onlineUsers.length === 0" style="color: #999; font-size: 12px;">
+            <div v-if="allOnlineUsers.length === 0" style="color: #999; font-size: 12px;">
               暂无在线用户
             </div>
             <!-- <div style="color: #999; font-size: 10px; margin-top: 5px;">
-              调试: {{ JSON.stringify(chatStore.onlineUsers) }}
+              调试: {{ JSON.stringify(allOnlineUsers) }}
             </div> -->
           </div>
         </div>
@@ -124,7 +124,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Setting, CircleCheck, CircleClose, ChatDotRound, Position } from '@element-plus/icons-vue'
@@ -146,6 +146,22 @@ const rooms = ref([
   { id: 'tech', name: '技术讨论' },
   { id: 'random', name: '闲聊' }
 ])
+
+// 计算属性：合并当前用户和在线用户
+const allOnlineUsers = computed(() => {
+  const users = [...chatStore.onlineUsers]
+  
+  // 如果当前用户不在在线用户列表中，添加当前用户
+  if (userStore.user && !users.find(user => user.id === userStore.user.id)) {
+    users.unshift({
+      id: userStore.user.id,
+      username: userStore.user.username,
+      avatar: userStore.user.avatar
+    })
+  }
+  
+  return users
+})
 
 onMounted(async () => {
   // 加入默认房间
@@ -178,13 +194,18 @@ const getCurrentRoomName = () => {
 const switchRoom = async (roomId) => {
   if (roomId === chatStore.currentRoom) return
   
-  // 离开当前房间
-  await chatStore.leaveRoom(chatStore.currentRoom)
-  wsStore.leaveRoom(chatStore.currentRoom)
-  
-  // 加入新房间
-  await chatStore.joinRoom(roomId)
-  wsStore.joinRoom(roomId)
+  try {
+    // 先通过WebSocket离开当前房间
+    wsStore.leaveRoom(chatStore.currentRoom)
+    
+    // 更新前端状态（这会清空消息并加载新房间的消息）
+    await chatStore.joinRoom(roomId)
+    
+    // 再通过WebSocket加入新房间
+    wsStore.joinRoom(roomId)
+  } catch (error) {
+    console.error('切换房间失败:', error)
+  }
 }
 
 const sendMessage = async () => {
@@ -442,6 +463,18 @@ const handleUserCommand = async (command) => {
 .own-message .message-text {
   background: #409eff;
   color: white;
+}
+
+/* 当前用户样式 */
+.online-user.current-user {
+  background: #e6f7ff;
+  border: 1px solid #91d5ff;
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.online-user.current-user .online-indicator {
+  background: #52c41a;
 }
 
 .chat-input {

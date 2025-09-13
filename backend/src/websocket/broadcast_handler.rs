@@ -38,6 +38,11 @@ impl BroadcastHandler {
         self.room_channels.get(room_id).map(|tx| tx.subscribe())
     }
 
+    /// 获取房间的广播发送器
+    pub fn get_room_channel(&self, room_id: &str) -> Option<broadcast::Sender<WebSocketMessage>> {
+        self.room_channels.get(room_id).cloned()
+    }
+
     /// 广播消息到指定房间
     pub fn broadcast_to_room(&self, room_id: &str, message: &WebSocketMessage) {
         if let Some(sender) = self.room_channels.get(room_id) {

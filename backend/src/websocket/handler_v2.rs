@@ -1,22 +1,23 @@
 use crate::database::{DbPool, MessageRepository, UserRepository};
 use crate::grpc::auth::AuthService;
 use crate::redis::SessionManager;
-use crate::websocket::WebSocketMessage;
-use crate::websocket::{BroadcastHandler, ConnectionState, MessageHandlers};
+use crate::websocket::{
+    BroadcastHandler, CommandProcessor, ConnectionState, StrategyFactory, WebSocketMessage,
+};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
+use tokio_tungstenite::WebSocketStream;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
-use tokio_tungstenite::{WebSocketStream, accept_async};
 
-pub struct WebSocketHandler {
-    message_repo: Arc<MessageRepository>,
-    user_repo: Arc<UserRepository>,
-    session_manager: Arc<SessionManager>,
-    auth_service: AuthService,
+/// 重构后的WebSocket处理器，使用策略模式+命令模式
+pub struct WebSocketHandlerV2 {
+    strategy_factory: Arc<StrategyFactory>,
     broadcast_handler: Arc<tokio::sync::Mutex<BroadcastHandler>>,
+    command_processor: Arc<CommandProcessor>,
+    auth_service: AuthService,
 }
 
-impl WebSocketHandler {
+impl WebSocketHandlerV2 {
     pub fn new(pool: DbPool, session_manager: SessionManager) -> Self {
         let message_repo = Arc::new(MessageRepository::new(pool.clone()));
         let user_repo = Arc::new(UserRepository::new(pool));
@@ -24,12 +25,18 @@ impl WebSocketHandler {
             std::env::var("JWT_SECRET").unwrap_or_else(|_| "your-secret-key".to_string()),
         );
 
+        let strategy_factory = Arc::new(StrategyFactory::new(user_repo.clone(), message_repo));
+        let broadcast_handler = Arc::new(tokio::sync::Mutex::new(BroadcastHandler::new()));
+        let command_processor = Arc::new(CommandProcessor::new(
+            strategy_factory.clone(),
+            broadcast_handler.clone(),
+        ));
+
         Self {
-            message_repo,
-            user_repo,
-            session_manager: Arc::new(session_manager),
+            strategy_factory,
+            broadcast_handler,
+            command_processor,
             auth_service,
-            broadcast_handler: Arc::new(tokio::sync::Mutex::new(BroadcastHandler::new())),
         }
     }
 
@@ -39,14 +46,6 @@ impl WebSocketHandler {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let (mut ws_sender, mut ws_receiver) = stream.split();
         let mut connection_state = ConnectionState::new();
-
-        // 创建消息处理器（不绑定特定房间，动态获取房间通道）
-        let message_handlers = MessageHandlers::new(
-            self.user_repo.clone(),
-            self.message_repo.clone(),
-            self.session_manager.clone(),
-            self.broadcast_handler.clone(),
-        );
 
         // 主消息处理循环
         loop {
@@ -58,10 +57,9 @@ impl WebSocketHandler {
                             msg?,
                             &mut ws_sender,
                             &mut connection_state,
-                            &message_handlers,
                         ).await {
                             println!("处理WebSocket消息失败: {}", e);
-                                break;
+                            break;
                         }
                     } else {
                         break;
@@ -84,7 +82,7 @@ impl WebSocketHandler {
                             }
                         }
                     } else {
-                            // 广播通道关闭，重新获取接收器
+                        // 广播通道关闭，重新获取接收器
                         if let Some(room_id) = connection_state.get_current_room() {
                             let mut broadcast_handler = self.broadcast_handler.lock().await;
                             if let Some(receiver) = broadcast_handler.get_room_receiver(room_id) {
@@ -99,7 +97,7 @@ impl WebSocketHandler {
         Ok(())
     }
 
-    /// 处理WebSocket消息
+    /// 处理WebSocket消息 - 现在变得非常简洁
     async fn handle_websocket_message(
         &self,
         msg: WsMessage,
@@ -108,7 +106,6 @@ impl WebSocketHandler {
             WsMessage,
         >,
         connection_state: &mut ConnectionState,
-        message_handlers: &MessageHandlers,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match msg {
             WsMessage::Text(text) => {
@@ -117,70 +114,10 @@ impl WebSocketHandler {
                 let ws_msg: WebSocketMessage = serde_json::from_str(&text)?;
                 println!("成功解析WebSocket消息: {:?}", ws_msg);
 
-                match ws_msg {
-                    WebSocketMessage::ChatMessage {
-                        user_id: ref msg_user_id,
-                        ..
-                    } => {
-                        // 设置用户ID（如果还没有设置）
-                        if connection_state.get_user_id().is_none() {
-                            connection_state.set_user_id(msg_user_id.clone());
-                        }
-
-                        if let Some(user_id) = connection_state.get_user_id() {
-                            message_handlers
-                                .handle_chat_message(ws_msg, user_id)
-                                .await?;
-                        }
-                    }
-                    WebSocketMessage::JoinRoom {
-                        user_id: ref msg_user_id,
-                        ..
-                    } => {
-                        // 设置用户ID（如果还没有设置）
-                        if connection_state.get_user_id().is_none() {
-                            connection_state.set_user_id(msg_user_id.clone());
-                        }
-
-                        if let Some(user_id) = connection_state.get_user_id() {
-                            if let Some(room_id) =
-                                message_handlers.handle_join_room(ws_msg, user_id).await?
-                            {
-                                connection_state.set_current_room(room_id.clone());
-
-                                // 获取房间广播接收器
-                                let mut broadcast_handler = self.broadcast_handler.lock().await;
-                                let room_tx =
-                                    broadcast_handler.get_or_create_room_channel(&room_id);
-                                let receiver = room_tx.subscribe();
-                                connection_state.set_room_receiver(receiver);
-                            }
-                        }
-                    }
-                    WebSocketMessage::LeaveRoom {
-                        user_id: ref msg_user_id,
-                        ..
-                    } => {
-                        // 设置用户ID（如果还没有设置）
-                        if connection_state.get_user_id().is_none() {
-                            connection_state.set_user_id(msg_user_id.clone());
-                        }
-
-                        if let Some(user_id) = connection_state.get_user_id() {
-                            if let Some(room_id) =
-                                message_handlers.handle_leave_room(ws_msg, user_id).await?
-                            {
-                                connection_state.clear_current_room();
-                            }
-                        }
-                    }
-                    WebSocketMessage::Error { .. } => {
-                        message_handlers.handle_error(ws_msg).await?;
-                    }
-                    _ => {
-                        println!("未处理的消息类型: {:?}", ws_msg);
-                    }
-                }
+                // 使用命令处理器处理消息
+                self.command_processor
+                    .process_message(ws_msg, ws_sender, connection_state)
+                    .await?;
             }
             WsMessage::Close(_) => {
                 println!("WebSocket连接关闭");

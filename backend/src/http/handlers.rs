@@ -318,17 +318,23 @@ async fn handle_get_messages(
     let limit = query
         .get("limit")
         .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(50);
+        .unwrap_or(1000); // 增加默认限制到1000条消息
 
     let before_timestamp = query
         .get("before_timestamp")
         .and_then(|s| s.parse::<i64>().ok());
+
+    println!(
+        "获取消息请求 - 房间ID: {}, 限制: {}, before_timestamp: {:?}",
+        room_id, limit, before_timestamp
+    );
 
     match message_repo
         .get_messages_by_room(&room_id, limit, before_timestamp)
         .await
     {
         Ok(messages) => {
+            println!("从数据库获取到 {} 条消息", messages.len());
             let grpc_messages: Vec<_> = messages.into_iter().map(|m| m.to_grpc()).collect();
             Ok(warp::reply::json(&grpc_messages))
         }

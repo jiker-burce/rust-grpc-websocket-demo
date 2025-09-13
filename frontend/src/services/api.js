@@ -81,8 +81,11 @@ export const chatApi = {
   },
 
   // 获取消息列表
-  getMessages: (roomId, limit = 50, beforeTimestamp = null) => {
-    const params = { limit }
+  getMessages: (roomId, limit = null, beforeTimestamp = null) => {
+    const params = {}
+    if (limit !== null) {
+      params.limit = limit
+    }
     if (beforeTimestamp) {
       params.before_timestamp = beforeTimestamp
     }
