@@ -219,9 +219,24 @@ impl WebSocketHandler {
                 } => {
                     match broadcast_msg {
                         Ok(msg) => {
-                            // 将广播消息发送给客户端
-                            if let Ok(json) = msg.to_json() {
-                                let _ = ws_sender.send(WsMessage::Text(json)).await;
+                            // 检查是否是聊天消息，如果是则排除发送者
+                            match &msg {
+                                WebSocketMessage::ChatMessage { user_id: msg_user_id, .. } => {
+                                    // 如果是聊天消息且不是当前用户发送的，才发送给客户端
+                                    if let Some(current_user_id) = &user_id {
+                                        if msg_user_id != current_user_id {
+                                            if let Ok(json) = msg.to_json() {
+                                                let _ = ws_sender.send(WsMessage::Text(json)).await;
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    // 其他类型的消息（如用户上线/下线）直接发送
+                                    if let Ok(json) = msg.to_json() {
+                                        let _ = ws_sender.send(WsMessage::Text(json)).await;
+                                    }
+                                }
                             }
                         }
                         Err(_) => {
