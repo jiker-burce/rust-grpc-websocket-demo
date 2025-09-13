@@ -41,7 +41,7 @@ services:
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
     ports:
       - "50051:50051"  # gRPC
-      - "8080:8080"    # WebSocket
+      - "8301:8301"    # WebSocket
       - "3001:3001"    # HTTP Health Check
     depends_on:
       - mysql
@@ -56,7 +56,7 @@ services:
       dockerfile: Dockerfile
     container_name: chat-frontend
     ports:
-      - "3000:80"
+      - "3001:80"
     depends_on:
       - backend
     networks:

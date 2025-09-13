@@ -117,6 +117,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         type: 'chat_message',
         room_id: chatStore.currentRoom,
         user_id: userStore.user.id,
+        username: userStore.user.username,
         content,
         message_type: messageType
       })

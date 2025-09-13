@@ -52,7 +52,9 @@ impl WebSocketHandler {
                     if let Some(msg) = msg {
                         match msg? {
                             WsMessage::Text(text) => {
+                                println!("收到WebSocket文本消息: {}", text);
                                 if let Ok(ws_msg) = WebSocketMessage::from_json(&text) {
+                                    println!("成功解析WebSocket消息: {:?}", ws_msg);
                                     match ws_msg {
                                         WebSocketMessage::JoinRoom {
                                             room_id,
@@ -124,14 +126,15 @@ impl WebSocketHandler {
                                             user_id: uid,
                                             content,
                                             message_type,
+                                            username,
                                         } => {
                                             println!(
                                                 "收到聊天消息: room_id={}, user_id={}, content={}",
                                                 room_id, uid, content
                                             );
                                             // 简化用户验证 - 直接处理消息
-                                            if let Some(u) = self.user_repo.find_by_id(&uid).await? {
-                                                println!("找到用户: {}", u.username);
+                                            if let Some(_u) = self.user_repo.find_by_id(&uid).await? {
+                                                println!("找到用户: {}", username);
                                                 let msg_type = match message_type.as_str() {
                                                     "image" => MessageType::Image,
                                                     "file" => MessageType::File,
@@ -140,7 +143,7 @@ impl WebSocketHandler {
 
                                                 let message = Message::new(
                                                     uid.clone(),
-                                                    u.username,
+                                                    username.clone(),
                                                     content.clone(),
                                                     room_id.clone(),
                                                     msg_type,
@@ -158,6 +161,7 @@ impl WebSocketHandler {
                                                 let broadcast_msg = WebSocketMessage::ChatMessage {
                                                     room_id: room_id.clone(),
                                                     user_id: uid,
+                                                    username,
                                                     content,
                                                     message_type,
                                                 };

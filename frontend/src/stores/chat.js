@@ -13,6 +13,7 @@ export const useChatStore = defineStore('chat', () => {
     console.log('添加消息到聊天列表:', message)
     const formattedMessage = {
       ...message,
+      id: message.id || `temp_${Date.now()}_${Math.random()}`, // 确保有ID字段
       timestamp: message.timestamp ? dayjs(message.timestamp * 1000).format('HH:mm:ss') : dayjs().format('HH:mm:ss')
     }
     console.log('格式化后的消息:', formattedMessage)

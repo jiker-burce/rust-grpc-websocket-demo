@@ -11,6 +11,7 @@ pub enum WebSocketMessage {
     ChatMessage {
         room_id: String,
         user_id: String,
+        username: String,
         content: String,
         message_type: String,
     },

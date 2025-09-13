@@ -127,11 +127,11 @@ npm run dev
 
 ## 📱 访问地址
 
-- **前端界面**: http://localhost:3000
+- **前端界面**: http://localhost:3002
 - **后端 API**: http://localhost:3001
 - **健康检查**: http://localhost:3001/health
 - **gRPC 服务**: localhost:50051
-- **WebSocket**: ws://localhost:8080
+- **WebSocket**: ws://localhost:8301
 
 ## 🧪 系统测试
 
