@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { userApi } from '@/services/api'
+import { grpcClient } from '@/services/grpc'
 
 export const useUserStore = defineStore('user', () => {
   const user = ref(null)
@@ -29,22 +29,22 @@ export const useUserStore = defineStore('user', () => {
   const login = async (email, password) => {
     loading.value = true
     try {
-      const response = await userApi.login(email, password)
-      console.log('登录响应:', response.data)
-      if (response.data.success) {
-        setUser(response.data.data.user)
-        setToken(response.data.data.token)
+      const response = await grpcClient.login(email, password)
+      console.log('gRPC登录响应:', response)
+      if (response.success) {
+        setUser(response.user)
+        setToken(response.token)
         console.log('用户信息已设置:', user.value)
         console.log('Token已设置:', token.value)
-        return { success: true, message: response.data.message }
+        return { success: true, message: response.message }
       } else {
-        return { success: false, message: response.data.message }
+        return { success: false, message: response.message }
       }
     } catch (error) {
-      console.error('登录错误:', error)
+      console.error('gRPC登录错误:', error)
       return { 
         success: false, 
-        message: error.response?.data?.message || '登录失败，请重试' 
+        message: error.message || '登录失败，请重试' 
       }
     } finally {
       loading.value = false
@@ -54,16 +54,16 @@ export const useUserStore = defineStore('user', () => {
   const register = async (username, email, password) => {
     loading.value = true
     try {
-      const response = await userApi.register(username, email, password)
-      if (response.data.success) {
-        return { success: true, message: response.data.message }
+      const response = await grpcClient.register(username, email, password)
+      if (response.success) {
+        return { success: true, message: response.message }
       } else {
-        return { success: false, message: response.data.message }
+        return { success: false, message: response.message }
       }
     } catch (error) {
       return { 
         success: false, 
-        message: error.response?.data?.message || '注册失败，请重试' 
+        message: error.message || '注册失败，请重试' 
       }
     } finally {
       loading.value = false
@@ -77,17 +77,17 @@ export const useUserStore = defineStore('user', () => {
   const updateProfile = async (username, avatar) => {
     loading.value = true
     try {
-      const response = await userApi.updateProfile(user.value.id, username, avatar)
-      if (response.data.success) {
-        setUser(response.data.user)
-        return { success: true, message: response.data.message }
+      const response = await grpcClient.updateUser(user.value.id, username, avatar)
+      if (response.success) {
+        setUser(response.user)
+        return { success: true, message: response.message }
       } else {
-        return { success: false, message: response.data.message }
+        return { success: false, message: response.message }
       }
     } catch (error) {
       return { 
         success: false, 
-        message: error.response?.data?.message || '更新失败，请重试' 
+        message: error.message || '更新失败，请重试' 
       }
     } finally {
       loading.value = false

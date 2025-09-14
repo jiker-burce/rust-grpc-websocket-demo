@@ -57,11 +57,9 @@ impl BroadcastHandler {
         current_user_id: &Option<String>,
     ) -> bool {
         match message {
-            WebSocketMessage::ChatMessage {
-                user_id: msg_user_id,
-                ..
-            } => {
-                // 聊天消息：只有不是当前用户发送的才转发
+            WebSocketMessage::NewMessage { message } => {
+                // 新消息：只有不是当前用户发送的才转发
+                let msg_user_id = &message.user_id;
                 if let Some(current_user) = current_user_id {
                     msg_user_id != current_user
                 } else {

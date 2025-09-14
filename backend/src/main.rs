@@ -1,5 +1,6 @@
 mod database;
 mod grpc;
+mod grpc_service;
 mod http;
 mod models;
 mod redis;
@@ -12,13 +13,15 @@ pub mod chat {
 
 use crate::chat::{chat_service_server::ChatServiceServer, user_service_server::UserServiceServer};
 use database::{create_pool, init_database};
-use grpc::{AuthService, ChatServiceImpl, UserServiceImpl};
+use grpc::{AuthService, UserServiceImpl};
+use grpc_service::ChatServiceImpl as GrpcChatServiceImpl;
 use http::create_routes;
 use redis::{SessionManager, create_redis_client};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 use tonic::transport::Server;
+use tonic_web::GrpcWebLayer;
 use tracing::{error, info};
 use warp::Filter;
 use websocket::WebSocketHandler;
@@ -52,18 +55,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 创建服务实例
     let user_service = UserServiceImpl::new(db_pool.clone(), redis_client.clone());
-    let chat_service = ChatServiceImpl::new(db_pool.clone(), redis_client.clone());
+    let message_repo = Arc::new(database::MessageRepository::new(db_pool.clone()));
+    let chat_service = GrpcChatServiceImpl::new(message_repo);
     let ws_handler = Arc::new(WebSocketHandler::new(
         db_pool.clone(),
         session_manager.clone(),
     ));
 
     // 创建HTTP API路由
-    let api_routes = create_routes(db_pool, session_manager, auth_service);
+    let api_routes = create_routes(db_pool, session_manager, auth_service).with(
+        warp::cors()
+            .allow_any_origin()
+            .allow_headers(vec!["content-type", "authorization"])
+            .allow_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"]),
+    );
 
-    // 启动gRPC服务器
+    // 启动gRPC服务器（支持gRPC-Web）
     let grpc_addr = "0.0.0.0:50051".parse()?;
     let grpc_server = Server::builder()
+        .accept_http1(true)
+        .layer(
+            tower::ServiceBuilder::new()
+                .layer(
+                    tower_http::cors::CorsLayer::new()
+                        .allow_origin(tower_http::cors::Any)
+                        .allow_headers(tower_http::cors::Any)
+                        .allow_methods(tower_http::cors::Any),
+                )
+                .layer(GrpcWebLayer::new()),
+        )
         .add_service(UserServiceServer::new(user_service))
         .add_service(ChatServiceServer::new(chat_service))
         .serve(grpc_addr);

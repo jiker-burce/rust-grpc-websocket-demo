@@ -20,6 +20,7 @@ pub trait MessageEventHandler: Send + Sync {
 pub struct MessageContext {
     pub user_id: Option<String>,
     pub current_room: Option<String>,
+    pub connection_id: Option<String>,
     pub broadcast_handler: Arc<Mutex<crate::websocket::BroadcastHandler>>,
 }
 
@@ -35,6 +36,8 @@ pub enum MessageResult {
     ClearCurrentRoom,
     /// 设置房间接收器
     SetRoomReceiver(tokio::sync::broadcast::Receiver<WebSocketMessage>),
+    /// 设置用户ID和房间接收器
+    SetUserIdAndRoomReceiver(String, tokio::sync::broadcast::Receiver<WebSocketMessage>),
     /// 发送响应消息
     SendResponse(WebSocketMessage),
 }
@@ -44,6 +47,7 @@ impl MessageContext {
         Self {
             user_id: None,
             current_room: None,
+            connection_id: None,
             broadcast_handler,
         }
     }

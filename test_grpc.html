@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>gRPC 测试</title>
+    <script src="https://unpkg.com/grpc-web@1.5.0/dist/grpc-web.js"></script>
+    <script src="https://unpkg.com/google-protobuf@3.21.4/dist/google-protobuf.js"></script>
+</head>
+<body>
+    <h1>gRPC 通信测试</h1>
+    <div id="output"></div>
+    
+    <script>
+        // 测试gRPC连接
+        async function testGrpcConnection() {
+            const output = document.getElementById('output');
+            
+            try {
+                // 测试健康检查
+                const healthResponse = await fetch('http://localhost:3001/health');
+                const healthData = await healthResponse.json();
+                output.innerHTML += `<p>✅ 后端健康检查: ${JSON.stringify(healthData)}</p>`;
+                
+                // 测试gRPC服务是否可达
+                const grpcResponse = await fetch('http://localhost:50051', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/grpc-web+proto',
+                        'grpc-web': '1.0'
+                    }
+                });
+                
+                if (grpcResponse.ok) {
+                    output.innerHTML += `<p>✅ gRPC服务可达</p>`;
+                } else {
+                    output.innerHTML += `<p>❌ gRPC服务不可达: ${grpcResponse.status}</p>`;
+                }
+                
+            } catch (error) {
+                output.innerHTML += `<p>❌ 测试失败: ${error.message}</p>`;
+            }
+        }
+        
+        // 页面加载时运行测试
+        window.onload = testGrpcConnection;
+    </script>
+</body>
+</html>

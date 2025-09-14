@@ -2,7 +2,8 @@ use super::{CommandProcessor, EventHandlerFactory};
 use crate::database::{DbPool, MessageRepository, UserRepository};
 use crate::grpc::auth::AuthService;
 use crate::redis::SessionManager;
-use crate::websocket::{BroadcastHandler, ConnectionState, WebSocketMessage};
+use crate::websocket::new_websocket::event_handlers::MessageContext;
+use crate::websocket::{BroadcastHandler, ConnectionState, UserTracker, WebSocketMessage};
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use tokio_tungstenite::WebSocketStream;
@@ -14,6 +15,7 @@ pub struct WebSocketHandler {
     broadcast_handler: Arc<tokio::sync::Mutex<BroadcastHandler>>,
     command_processor: Arc<CommandProcessor>,
     auth_service: AuthService,
+    user_tracker: Arc<UserTracker>,
 }
 
 impl WebSocketHandler {
@@ -25,12 +27,15 @@ impl WebSocketHandler {
         );
 
         let session_manager_arc = Arc::new(session_manager);
+        let broadcast_handler = Arc::new(tokio::sync::Mutex::new(BroadcastHandler::new()));
+        let user_tracker = Arc::new(UserTracker::new());
         let event_handler_factory = Arc::new(EventHandlerFactory::new(
             user_repo.clone(),
             message_repo,
             session_manager_arc.clone(),
+            broadcast_handler.clone(),
+            user_tracker.clone(),
         ));
-        let broadcast_handler = Arc::new(tokio::sync::Mutex::new(BroadcastHandler::new()));
         let command_processor = Arc::new(CommandProcessor::new(
             event_handler_factory.clone(),
             broadcast_handler.clone(),
@@ -41,6 +46,7 @@ impl WebSocketHandler {
             broadcast_handler,
             command_processor,
             auth_service,
+            user_tracker,
         }
     }
 
@@ -50,6 +56,14 @@ impl WebSocketHandler {
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let (mut ws_sender, mut ws_receiver) = stream.split();
         let mut connection_state = ConnectionState::new();
+
+        // 生成唯一的连接ID
+        let connection_id = uuid::Uuid::new_v4().to_string();
+        println!("新WebSocket连接建立: connection_id={}", connection_id);
+
+        // 创建消息上下文并设置连接ID
+        let mut message_context = MessageContext::new(self.broadcast_handler.clone());
+        message_context.connection_id = Some(connection_id.clone());
 
         // 主消息处理循环
         loop {
@@ -61,6 +75,7 @@ impl WebSocketHandler {
                             msg?,
                             &mut ws_sender,
                             &mut connection_state,
+                            &mut message_context,
                         ).await {
                             println!("处理WebSocket消息失败: {}", e);
                             break;
@@ -98,6 +113,41 @@ impl WebSocketHandler {
             }
         }
 
+        // 连接结束，清理用户状态
+        if let Some((user_id, room_id)) = self
+            .user_tracker
+            .connection_disconnect(connection_id.clone())
+            .await
+        {
+            println!(
+                "连接断开，清理用户状态: connection_id={}, user_id={}, room_id={}",
+                connection_id, user_id, room_id
+            );
+
+            // 广播用户离开消息
+            let broadcast_message = WebSocketMessage::UserLeft {
+                user_id: user_id.clone(),
+                username: format!("用户_{}", &user_id[5..13]),
+                room_id: room_id.clone(),
+            };
+
+            let mut broadcast_handler = self.broadcast_handler.lock().await;
+            broadcast_handler.broadcast_to_room(&room_id, &broadcast_message);
+
+            // 广播更新后的用户列表
+            let room_users = self.user_tracker.get_room_users(&room_id).await;
+            let users_list_message = WebSocketMessage::OnlineUsersList {
+                room_id: room_id.clone(),
+                users: room_users,
+            };
+            broadcast_handler.broadcast_to_room(&room_id, &users_list_message);
+        } else {
+            println!(
+                "连接断开，未找到对应的用户: connection_id={}",
+                connection_id
+            );
+        }
+
         Ok(())
     }
 
@@ -110,6 +160,7 @@ impl WebSocketHandler {
             WsMessage,
         >,
         connection_state: &mut ConnectionState,
+        message_context: &mut MessageContext,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         match msg {
             WsMessage::Text(text) => {
@@ -120,7 +171,7 @@ impl WebSocketHandler {
 
                 // 使用命令处理器处理消息
                 self.command_processor
-                    .process_message(ws_msg, ws_sender, connection_state)
+                    .process_message(ws_msg, ws_sender, connection_state, message_context)
                     .await?;
             }
             WsMessage::Close(_) => {

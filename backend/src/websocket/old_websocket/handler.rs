@@ -119,14 +119,9 @@ impl WebSocketHandler {
                 println!("成功解析WebSocket消息: {:?}", ws_msg);
 
                 match ws_msg {
-                    WebSocketMessage::ChatMessage {
-                        user_id: ref msg_user_id,
-                        ..
-                    } => {
-                        // 设置用户ID（如果还没有设置）
-                        if connection_state.get_user_id().is_none() {
-                            connection_state.set_user_id(msg_user_id.clone());
-                        }
+                    WebSocketMessage::SendMessage { .. } => {
+                        // 处理发送消息请求
+                        println!("收到发送消息请求");
 
                         if let Some(user_id) = connection_state.get_user_id() {
                             message_handlers
@@ -135,13 +130,11 @@ impl WebSocketHandler {
                         }
                     }
                     WebSocketMessage::JoinRoom {
-                        user_id: ref msg_user_id,
-                        ..
+                        ref room_id,
+                        user_id: _,
                     } => {
-                        // 设置用户ID（如果还没有设置）
-                        if connection_state.get_user_id().is_none() {
-                            connection_state.set_user_id(msg_user_id.clone());
-                        }
+                        // 处理加入房间的protobuf数据
+                        println!("收到加入房间的protobuf数据");
 
                         if let Some(user_id) = connection_state.get_user_id() {
                             if let Some(room_id) =
@@ -159,13 +152,11 @@ impl WebSocketHandler {
                         }
                     }
                     WebSocketMessage::LeaveRoom {
-                        user_id: ref msg_user_id,
-                        ..
+                        ref room_id,
+                        user_id: _,
                     } => {
-                        // 设置用户ID（如果还没有设置）
-                        if connection_state.get_user_id().is_none() {
-                            connection_state.set_user_id(msg_user_id.clone());
-                        }
+                        // 处理离开房间的protobuf数据
+                        println!("收到离开房间的protobuf数据");
 
                         if let Some(user_id) = connection_state.get_user_id() {
                             if let Some(room_id) =

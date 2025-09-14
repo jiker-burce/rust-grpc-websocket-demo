@@ -2,6 +2,7 @@
 pub mod broadcast_handler;
 pub mod connection_state;
 pub mod message;
+pub mod user_tracker;
 
 // 两种不同的实现方式
 pub mod new_websocket; // 重构后的设计模式实现
@@ -20,3 +21,4 @@ pub use new_websocket::*;
 pub use broadcast_handler::*;
 pub use connection_state::*;
 pub use message::*;
+pub use user_tracker::*;

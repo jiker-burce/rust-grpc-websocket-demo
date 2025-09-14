@@ -90,12 +90,10 @@ impl ChatService for ChatServiceImpl {
         }))
     }
 
-    type GetMessagesStream = Streaming<ChatMessage>;
-
     async fn get_messages(
         &self,
         request: Request<GetMessagesRequest>,
-    ) -> Result<Response<Streaming<ChatMessage>>, Status> {
+    ) -> Result<Response<GetMessagesResponse>, Status> {
         let req = request.into_inner();
 
         // 获取历史消息
@@ -113,21 +111,16 @@ impl ChatService for ChatServiceImpl {
             .await
             .map_err(|e| Status::internal(format!("Failed to get messages: {}", e)))?;
 
-        // 创建流
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
+        // 转换为gRPC消息
+        let grpc_messages: Vec<ChatMessage> =
+            messages.into_iter().map(|msg| msg.to_grpc()).collect();
 
-        // 发送历史消息
-        tokio::spawn(async move {
-            for message in messages.into_iter().rev() {
-                // 按时间顺序发送
-                if tx.send(message.to_grpc()).await.is_err() {
-                    break;
-                }
-            }
-        });
+        // 创建响应
+        let response = GetMessagesResponse {
+            messages: grpc_messages,
+        };
 
-        // 暂时返回错误，稍后修复gRPC Streaming
-        Err(Status::unimplemented("gRPC Streaming not implemented yet"))
+        Ok(Response::new(response))
     }
 
     async fn get_online_users(

@@ -43,21 +43,44 @@ impl MessageRepository {
         );
 
         let messages = if let Some(timestamp) = before_timestamp {
-            println!("使用 before_timestamp 查询，时间戳: {}", timestamp);
-            sqlx::query_as!(
-                Message,
-                r#"
-                SELECT * FROM messages 
-                WHERE room_id = ? AND created_at < FROM_UNIXTIME(?)
-                ORDER BY created_at ASC 
-                LIMIT ?
-                "#,
-                room_id,
-                timestamp,
-                limit
-            )
-            .fetch_all(&self.pool)
-            .await?
+            // 如果时间戳为0，表示获取所有消息
+            if timestamp == 0 {
+                println!("时间戳为0，获取所有消息");
+                sqlx::query_as!(
+                    Message,
+                    r#"
+                    SELECT * FROM messages 
+                    WHERE room_id = ? 
+                    ORDER BY created_at ASC 
+                    LIMIT ?
+                    "#,
+                    room_id,
+                    limit
+                )
+                .fetch_all(&self.pool)
+                .await?
+            } else {
+                // 将毫秒时间戳转换为秒
+                let timestamp_seconds = timestamp / 1000;
+                println!(
+                    "使用 before_timestamp 查询，时间戳: {} (秒: {})",
+                    timestamp, timestamp_seconds
+                );
+                sqlx::query_as!(
+                    Message,
+                    r#"
+                    SELECT * FROM messages 
+                    WHERE room_id = ? AND created_at < FROM_UNIXTIME(?)
+                    ORDER BY created_at ASC 
+                    LIMIT ?
+                    "#,
+                    room_id,
+                    timestamp_seconds,
+                    limit
+                )
+                .fetch_all(&self.pool)
+                .await?
+            }
         } else {
             println!("不使用 before_timestamp 查询，获取所有消息");
             sqlx::query_as!(

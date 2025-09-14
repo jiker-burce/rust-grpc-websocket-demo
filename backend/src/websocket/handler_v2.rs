@@ -115,8 +115,63 @@ impl WebSocketHandlerV2 {
             WsMessage::Text(text) => {
                 println!("收到WebSocket文本消息: {}", text);
 
-                let ws_msg: WebSocketMessage = serde_json::from_str(&text)?;
-                println!("成功解析WebSocket消息: {:?}", ws_msg);
+                // 解析gRPC消息帧
+                let grpc_frame: serde_json::Value = serde_json::from_str(&text)?;
+                let message_type = grpc_frame["type"].as_str().unwrap_or("unknown");
+                let data = grpc_frame["data"].as_array().map(|arr| {
+                    arr.iter()
+                        .map(|v| v.as_u64().unwrap_or(0) as u8)
+                        .collect::<Vec<u8>>()
+                });
+
+                println!(
+                    "解析gRPC消息帧: type={}, data_len={}",
+                    message_type,
+                    data.as_ref().map(|d| d.len()).unwrap_or(0)
+                );
+
+                // 根据消息类型创建WebSocketMessage
+                let ws_msg = match message_type {
+                    "join_room" => {
+                        if let Some(binary_data) = data {
+                            WebSocketMessage::JoinRoom { data: binary_data }
+                        } else {
+                            return Err("缺少protobuf数据".into());
+                        }
+                    }
+                    "leave_room" => {
+                        if let Some(binary_data) = data {
+                            WebSocketMessage::LeaveRoom { data: binary_data }
+                        } else {
+                            return Err("缺少protobuf数据".into());
+                        }
+                    }
+                    "send_message" => {
+                        if let Some(binary_data) = data {
+                            WebSocketMessage::SendMessage { data: binary_data }
+                        } else {
+                            return Err("缺少protobuf数据".into());
+                        }
+                    }
+                    "get_messages" => {
+                        if let Some(binary_data) = data {
+                            WebSocketMessage::GetMessages { data: binary_data }
+                        } else {
+                            return Err("缺少protobuf数据".into());
+                        }
+                    }
+                    "get_online_users" => {
+                        if let Some(binary_data) = data {
+                            WebSocketMessage::GetOnlineUsers { data: binary_data }
+                        } else {
+                            return Err("缺少protobuf数据".into());
+                        }
+                    }
+                    _ => {
+                        println!("未知消息类型: {}", message_type);
+                        return Ok(());
+                    }
+                };
 
                 // 使用命令处理器处理消息
                 self.command_processor

@@ -13,7 +13,7 @@ service UserService {
 // 聊天服务
 service ChatService {
     rpc SendMessage(SendMessageRequest) returns (SendMessageResponse);
-    rpc GetMessages(GetMessagesRequest) returns (stream ChatMessage);
+    rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse);
     rpc GetOnlineUsers(GetOnlineUsersRequest) returns (GetOnlineUsersResponse);
     rpc JoinRoom(JoinRoomRequest) returns (JoinRoomResponse);
     rpc LeaveRoom(LeaveRoomRequest) returns (LeaveRoomResponse);
@@ -110,6 +110,10 @@ message GetMessagesRequest {
     string room_id = 1;
     int32 limit = 2;
     int64 before_timestamp = 3;
+}
+
+message GetMessagesResponse {
+    repeated ChatMessage messages = 1;
 }
 
 message GetOnlineUsersRequest {

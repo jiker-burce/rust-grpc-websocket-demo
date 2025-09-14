@@ -129,12 +129,12 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Setting, CircleCheck, CircleClose, ChatDotRound, Position } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { useChatStore } from '@/stores/chat'
+import { useChatHybridStore } from '@/stores/chat-hybrid'
 import { useWebSocketStore } from '@/stores/websocket'
 
 const router = useRouter()
 const userStore = useUserStore()
-const chatStore = useChatStore()
+const chatStore = useChatHybridStore()
 const wsStore = useWebSocketStore()
 
 const messageInput = ref('')
@@ -147,30 +147,19 @@ const rooms = ref([
   { id: 'random', name: '闲聊' }
 ])
 
-// 计算属性：合并当前用户和在线用户
+// 计算属性：直接使用后端返回的在线用户列表
 const allOnlineUsers = computed(() => {
-  const users = [...chatStore.onlineUsers]
-  
-  // 如果当前用户不在在线用户列表中，添加当前用户
-  if (userStore.user && !users.find(user => user.id === userStore.user.id)) {
-    users.unshift({
-      id: userStore.user.id,
-      username: userStore.user.username,
-      avatar: userStore.user.avatar
-    })
-  }
-  
-  return users
+  return [...chatStore.onlineUsers]
 })
 
 onMounted(async () => {
-  // 加入默认房间
-  await chatStore.joinRoom('general')
-  
   // 连接WebSocket
   if (!wsStore.connected) {
     await wsStore.connect()
   }
+  
+  // 加入默认房间（使用混合架构）
+  await chatStore.joinRoom('general')
 })
 
 // 监听消息变化，自动滚动到底部
@@ -195,16 +184,11 @@ const switchRoom = async (roomId) => {
   if (roomId === chatStore.currentRoom) return
   
   try {
-    // 先通过WebSocket离开当前房间
-    wsStore.leaveRoom(chatStore.currentRoom)
-    
-    // 更新前端状态（这会清空消息并加载新房间的消息）
+    // 使用混合架构切换房间
     await chatStore.joinRoom(roomId)
-    
-    // 再通过WebSocket加入新房间
-    wsStore.joinRoom(roomId)
   } catch (error) {
     console.error('切换房间失败:', error)
+    ElMessage.error('切换房间失败')
   }
 }
 
@@ -215,25 +199,11 @@ const sendMessage = async () => {
   
   try {
     const messageContent = messageInput.value.trim()
-    const userStore = useUserStore()
-    
-    // 立即在页面上显示消息
-    const tempMessage = {
-      id: Date.now().toString(),
-      user_id: userStore.user.id,
-      username: userStore.user.username,
-      content: messageContent,
-      message_type: 'text',
-      room_id: chatStore.currentRoom,
-      timestamp: Math.floor(Date.now() / 1000),
-      is_temp: true // 标记为临时消息
-    }
-    
-    chatStore.addMessage(tempMessage)
     messageInput.value = ''
     
-    // 通过WebSocket发送消息
-    wsStore.sendChatMessage(messageContent, 'text')
+    // 使用混合架构发送消息
+    await chatStore.sendMessage(messageContent, 'text')
+    
   } catch (error) {
     ElMessage.error('发送失败，请重试')
   } finally {
